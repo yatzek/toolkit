@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/tsawler/toolkit"
+	"github.com/yatzek/toolkit"
 )
 
 func main() {

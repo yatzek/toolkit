@@ -1,3 +1,3 @@
-module github.com/tsawler/toolkit
+module github.com/yatzek/toolkit
 
 go 1.18
