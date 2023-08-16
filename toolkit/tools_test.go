@@ -1,6 +1,9 @@
 package toolkit
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/png"
@@ -218,5 +221,91 @@ func TestTools_DownloadStaticFile(t *testing.T) {
 	_, err := io.ReadAll(res.Body)
 	if err != nil {
 		t.Error(err)
+	}
+}
+
+var readJSONTests = []struct {
+	name          string
+	json          string
+	errorExpected bool
+	maxSize       int
+	allowUnknown  bool
+}{
+	{"valid json", `{"foo": "bar"}`, false, 1024, false},
+	{"badly formatted json", `{"foo":}`, true, 1024, false},
+	{"incorrect type", `{"foo": 1}`, true, 1024, false},
+	{"two json files", `{"foo":"1"}{"alpha":"beta"}`, true, 1024, false},
+	{"empty body", ``, true, 1024, false},
+	{"syntax error in json", `{"foo": 1"}`, true, 1024, false},
+	{"unknown field in json", `{"BAZ":"1"}`, true, 1024, false},
+	{"missing field name", `{jack:"1"}`, true, 1024, true},
+	{"file too large", `{"foo":"bar"}`, true, 5, true},
+	{"not json", `Hello, World!`, true, 1024, true},
+}
+
+func TestTools_ReadJSON(t *testing.T) {
+	var testTools Tools
+	for _, e := range readJSONTests {
+		testTools.MaxJSONSize = e.maxSize
+		testTools.AllowUnknownFields = e.allowUnknown
+
+		var decodedJSON struct {
+			Foo string `json:"foo"`
+		}
+
+		req, err := http.NewRequest("POST", "/", bytes.NewReader([]byte(e.json)))
+		if err != nil {
+			t.Log("Error: ", err)
+		}
+		rr := httptest.NewRecorder()
+
+		err = testTools.ReadJSON(rr, req, &decodedJSON)
+		if e.errorExpected && err == nil {
+			t.Errorf("%s: expected an error but did not get one", e.name)
+		}
+		if !e.errorExpected && err != nil {
+			t.Errorf("%s: did not expect an error but got one: %s", e.name, err.Error())
+		}
+		req.Body.Close()
+	}
+}
+
+func TestTools_WriteJSON(t *testing.T) {
+	var testTools Tools
+	rr := httptest.NewRecorder()
+	payload := JSONResponse{
+		Error:   false,
+		Message: "foo",
+	}
+	headers := make(http.Header)
+	headers.Add("FOO", "BAR")
+
+	err := testTools.WriteJSON(rr, http.StatusOK, payload, headers)
+	if err != nil {
+		t.Errorf("failed to write json, %v", err)
+	}
+}
+
+func TestTools_ErrorJSON(t *testing.T) {
+	var testTools Tools
+	rr := httptest.NewRecorder()
+	err := testTools.ErrorJSON(rr, errors.New("some error"), http.StatusServiceUnavailable)
+	if err != nil {
+		t.Error(err)
+	}
+
+	var payload JSONResponse
+	decoder := json.NewDecoder(rr.Body)
+	err = decoder.Decode(&payload)
+	if err != nil {
+		t.Error("received error when decoding JSON", err)
+	}
+
+	if !payload.Error {
+		t.Error("expected payload.Error to be true")
+	}
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status code %d but received %d", http.StatusServiceUnavailable, rr.Code)
 	}
 }
