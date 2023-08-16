@@ -3,5 +3,6 @@ go 1.21
 use (
 	./app
 	./app-upload
+	./app-json
 	./toolkit
 )
